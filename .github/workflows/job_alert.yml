@@ -2,7 +2,7 @@ name: Daily Data Engineer Job Search
 
 on:
   schedule:
-    - cron: '30 2 * * *'  # 8:00 AM IST daily
+    - cron: '30 2 * * *'
   workflow_dispatch:
 
 jobs:
@@ -36,15 +36,3 @@ jobs:
         name: job-report
         path: '*.xlsx'
         retention-days: 7
-```
-
-### **File 2: `job_search_automation.py`** ✅
-**Copy the code from the message above (it's very long)**
-
-### **File 3: `requirements.txt`** ✅
-```
-pandas==2.1.4
-openpyxl==3.1.2
-requests==2.31.0
-beautifulsoup4==4.12.2
-lxml==4.9.3
