@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Data Engineer Job Search Automation
-Scrapes jobs from Naukri, company portals, and other sources
+Scrapes jobs from Naukri, company portals
 Generates Excel report and sends daily email alerts
 """
 
@@ -183,7 +183,8 @@ class JobAlertAutomation:
         recipient_email = os.getenv('RECIPIENT_EMAIL')
         
         if not sender_email or not email_password or not recipient_email:
-            print("⚠️ Email credentials not configured. Set SENDER_EMAIL, EMAIL_PASSWORD, RECIPIENT_EMAIL")
+            print("⚠️ Email credentials not configured")
+            print("Please set: SENDER_EMAIL, EMAIL_PASSWORD, RECIPIENT_EMAIL")
             return False
         
         if not os.path.exists(excel_file):
@@ -193,23 +194,20 @@ class JobAlertAutomation:
         try:
             print("📧 Sending email alert...")
             
-            # Create message
             msg = MIMEMultipart()
             msg['From'] = sender_email
             msg['To'] = recipient_email
             msg['Date'] = formatdate(localtime=True)
             msg['Subject'] = f"🎯 Data Engineer Job Alerts (≤2 YOE) - {datetime.now().strftime('%d %B %Y')}"
             
-            # Email body
-            body = f"""
-Hello Sri Charan,
+            body = f"""Hello Sri Charan,
 
-Here are the latest Data Engineer job opportunities matching your profile (≤2 years experience):
+Here are {len(self.jobs)} Data Engineer job opportunities matching your profile (≤2 years experience):
 
 📊 SUMMARY:
-• Total Jobs Found: {len(self.jobs)}
-• Filtered For: Data Engineer roles with ≤2 YOE requirement
-• Location Focus: Primarily India-based positions
+- Total Jobs Found: {len(self.jobs)}
+- Filtered For: Data Engineer roles with ≤2 YOE requirement
+- Location Focus: Primarily India-based positions
 
 WHAT'S INCLUDED:
 ✓ Job Title & Company Name
@@ -224,23 +222,21 @@ WHAT'S INCLUDED:
 4. Track your applications
 
 YOUR PROFILE STRENGTHS:
-• 2 YOE as Data Engineer
-• AWS (Glue, Lambda, S3, Athena) expertise
-• PySpark & Databricks experience
-• ETL & Data Lake architecture knowledge
-• Azure services (Data Factory, Synapse)
-• Real-time & batch data pipeline expertise
+- 2 YOE as Data Engineer
+- AWS (Glue, Lambda, S3, Athena) expertise
+- PySpark & Databricks experience
+- ETL & Data Lake architecture knowledge
+- Azure services (Data Factory, Synapse)
+- Real-time & batch data pipeline expertise
 
 Good luck with your applications! You've got strong experience for these roles. 🚀
 
 ---
 Generated: {datetime.now().strftime('%d-%m-%Y at %H:%M IST')}
-Automated Job Alert System
-            """
+Automated Job Alert System"""
             
             msg.attach(MIMEText(body, 'plain'))
             
-            # Attach Excel file
             with open(excel_file, 'rb') as attachment:
                 part = MIMEBase('application', 'octet-stream')
                 part.set_payload(attachment.read())
@@ -248,8 +244,7 @@ Automated Job Alert System
                 part.add_header('Content-Disposition', f'attachment; filename={excel_file}')
                 msg.attach(part)
             
-            # Send email via Gmail SMTP
-            print(f"📧 Connecting to Gmail SMTP...")
+            print("📧 Connecting to Gmail SMTP...")
             server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
             server.login(sender_email, email_password)
             server.send_message(msg)
@@ -259,7 +254,8 @@ Automated Job Alert System
             return True
             
         except smtplib.SMTPAuthenticationError:
-            print("❌ Gmail authentication failed. Check your email and app password.")
+            print("❌ Gmail authentication failed!")
+            print("Check: EMAIL_PASSWORD is correct 16-char app password")
             return False
         except Exception as e:
             print(f"❌ Error sending email: {e}")
@@ -274,20 +270,16 @@ Automated Job Alert System
         
         start_time = time.time()
         
-        # Scrape jobs from multiple sources
         self.scrape_naukri_jobs()
-        time.sleep(2)  # Be respectful with requests
+        time.sleep(2)
         
         self.scrape_company_portals()
         time.sleep(2)
         
-        # Process jobs
         self.remove_duplicates()
         
-        # Generate Excel report
         excel_file = self.generate_excel_report()
         
-        # Send email alert
         if excel_file:
             self.send_email_alert(excel_file)
         
@@ -302,134 +294,3 @@ Automated Job Alert System
 if __name__ == "__main__":
     automation = JobAlertAutomation()
     automation.run()
-
-class JobAlertAutomation:
-    def __init__(self):
-        self.jobs = []
-        self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        
-    def scrape_naukri_jobs(self):
-        try:
-            print("🔍 Scraping Naukri.com...")
-            url = "https://www.naukri.com/jobs-search?k=data%20engineer&exp=0,2&count=100"
-            response = requests.get(url, headers=self.headers, timeout=15)
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            for card in soup.find_all('div', class_='srp-jobtuple-wrapper')[:20]:
-                try:
-                    title = card.find('a', class_='title').text.strip()
-                    company = card.find('a', class_='comp-name').text.strip()
-                    location = card.find('span', class_='location-wrapper').text.strip()
-                    salary = card.find('span', class_='sal-wrap').text.strip()
-                    url_elem = card.find('a', class_='title')
-                    job_url = f"https://www.naukri.com{url_elem['href']}"
-                    experience = card.find('span', class_='exp-wrap').text.strip()
-                    
-                    if self.is_valid_experience(experience):
-                        self.jobs.append({
-                            'Job Title': title, 'Company': company, 'Location': location,
-                            'Salary': salary, 'Experience': experience, 'Source': 'Naukri',
-                            'Job URL': job_url, 'Posted Date': datetime.now().strftime('%Y-%m-%d')
-                        })
-                except: pass
-        except Exception as e:
-            print(f"⚠️ Error: {e}")
-    
-    def scrape_company_portals(self):
-        try:
-            print("🔍 Scraping Company Portals...")
-            companies = {
-                'Cognizant': 'https://careers.cognizant.com/search-jobs?keywords=data%20engineer',
-                'TCS': 'https://www.tcs.com/careers',
-            }
-            
-            for company, url in companies.items():
-                try:
-                    response = requests.get(url, headers=self.headers, timeout=15)
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    links = soup.find_all('a', href=re.compile(r'data.*engineer', re.I))
-                    
-                    for link in links[:5]:
-                        self.jobs.append({
-                            'Job Title': 'Data Engineer', 'Company': company,
-                            'Location': 'India', 'Salary': 'Check Portal',
-                            'Experience': '0-2 yrs', 'Source': company,
-                            'Job URL': link.get('href', 'N/A'),
-                            'Posted Date': datetime.now().strftime('%Y-%m-%d')
-                        })
-                except: pass
-        except: pass
-    
-    def is_valid_experience(self, exp_str):
-        if not exp_str or 'fresher' in str(exp_str).lower(): return True
-        numbers = re.findall(r'\d+', str(exp_str))
-        return max([int(n) for n in numbers]) <= 2 if numbers else True
-    
-    def remove_duplicates(self):
-        if self.jobs:
-            df = pd.DataFrame(self.jobs)
-            df = df.drop_duplicates(subset=['Company', 'Job Title', 'Location'], keep='first')
-            self.jobs = df.to_dict('records')
-            print(f"✅ {len(self.jobs)} unique jobs found")
-    
-    def generate_excel_report(self, file='job_alerts.xlsx'):
-        if not self.jobs: return None
-        df = pd.DataFrame(self.jobs)
-        cols = ['Job Title', 'Company', 'Location', 'Salary', 'Experience', 'Source', 'Posted Date', 'Job URL']
-        df = df[[c for c in cols if c in df.columns]]
-        
-        with pd.ExcelWriter(file, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Jobs', index=False)
-            worksheet = writer.sheets['Jobs']
-            for column in worksheet.columns:
-                max_len = max(len(str(cell.value)) for cell in column)
-                worksheet.column_dimensions[column[0].column_letter].width = min(max_len + 2, 50)
-        print(f"✅ Excel saved: {file}")
-        return file
-    
-    def send_email(self, excel_file):
-        sender = os.getenv('SENDER_EMAIL')
-        pwd = os.getenv('EMAIL_PASSWORD')
-        recipient = os.getenv('RECIPIENT_EMAIL', 'sricharandasika@gmail.com')
-        
-        if not sender or not pwd: return False
-        
-        try:
-            msg = MIMEMultipart()
-            msg['From'], msg['To'] = sender, recipient
-            msg['Date'] = formatdate(localtime=True)
-            msg['Subject'] = f"🎯 Data Engineer Jobs (≤2 YOE) - {datetime.now().strftime('%d %B %Y')}"
-            
-            body = f"Here are {len(self.jobs)} Data Engineer jobs for you!\n\nAttached: Complete list with links."
-            msg.attach(MIMEText(body, 'plain'))
-            
-            with open(excel_file, 'rb') as attachment:
-                part = MIMEBase('application', 'octet-stream')
-                part.set_payload(attachment.read())
-                encoders.encode_base64(part)
-                part.add_header('Content-Disposition', f'attachment; filename={excel_file}')
-                msg.attach(part)
-            
-            server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-            server.login(sender, pwd)
-            server.send_message(msg)
-            server.quit()
-            print("✅ Email sent!")
-            return True
-        except Exception as e:
-            print(f"❌ Email error: {e}")
-            return False
-    
-    def run(self):
-        print("\n🚀 Starting Job Alert Automation...\n")
-        self.scrape_naukri_jobs()
-        time.sleep(2)
-        self.scrape_company_portals()
-        self.remove_duplicates()
-        excel = self.generate_excel_report()
-        if excel and os.getenv('SENDER_EMAIL'):
-            self.send_email(excel)
-        print(f"\n✅ Done! {len(self.jobs)} jobs found\n")
-
-if __name__ == "__main__":
-    JobAlertAutomation().run()
