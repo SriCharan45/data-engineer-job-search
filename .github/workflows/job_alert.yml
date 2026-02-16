@@ -31,7 +31,7 @@ jobs:
         python job_search_automation.py
     
     - name: Upload job report as artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: job-report
         path: '*.xlsx'
