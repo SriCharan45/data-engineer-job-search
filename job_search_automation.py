@@ -130,4 +130,43 @@ Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC
             msg.attach(MIMEText(body, "plain"))
 
             with open(excel_file, "rb") as f:
-                part = MIMEBase("application", "octet-stream"
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(f.read())
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition",
+                    f"attachment; filename={excel_file}",
+                )
+                msg.attach(part)
+
+            server = smtplib.SMTP("smtp.gmail.com", 587)
+            server.starttls()
+            server.login(sender, password)
+            server.send_message(msg)
+            server.quit()
+
+            print("✅ Email sent successfully.")
+
+        except smtplib.SMTPAuthenticationError:
+            print("❌ Gmail authentication failed.")
+            print("Make sure you used the 16-character app password WITHOUT spaces.")
+        except Exception:
+            print("❌ Email sending failed.")
+            print(traceback.format_exc())
+
+    # -------------------------
+    # MAIN RUN
+    # -------------------------
+    def run(self):
+        print("🚀 Job Alert Automation Started")
+
+        self.scrape_naukri_jobs()
+        self.remove_duplicates()
+        excel_file = self.generate_excel_report()
+        self.send_email_alert(excel_file)
+
+        print("✅ Automation Finished")
+
+
+if __name__ == "__main__":
+    JobAlertAutomation().run()
