@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-Reliable Data Engineer Job Alert Automation
-- Always sends email
-- Handles scraping failures safely
-- Works in GitHub Actions
-"""
 
 import os
 import smtplib
@@ -15,60 +9,77 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email import encoders
-from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
 import re
-import traceback
 
 
 class JobAlertAutomation:
+
     def __init__(self):
         self.jobs = []
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
 
-    # -------------------------
-    # SCRAPE NAUKRI (SAFE MODE)
-    # -------------------------
-    def scrape_naukri_jobs(self):
-        print("🔍 Attempting Naukri scrape...")
+    # ----------------------------------
+    # INDEED RSS (ALL INDIA)
+    # ----------------------------------
+    def scrape_indeed_rss(self):
+        print("🔍 Fetching Data Engineer jobs from Indeed RSS...")
 
-        url = "https://www.naukri.com/jobs-search?k=data%20engineer&exp=0,2"
+        rss_url = "https://in.indeed.com/rss?q=data+engineer+0+2+years&l=India"
 
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(rss_url, timeout=15)
+            root = ET.fromstring(response.content)
 
-            if response.status_code != 200:
-                print(f"⚠️ Naukri returned status {response.status_code}")
-                return
+            for item in root.findall(".//item"):
+                title = item.find("title").text if item.find("title") is not None else ""
+                link = item.find("link").text if item.find("link") is not None else ""
+                description = item.find("description").text if item.find("description") is not None else ""
+                pub_date = item.find("pubDate").text if item.find("pubDate") is not None else ""
 
-            soup = BeautifulSoup(response.text, "lxml")
+                # Must contain Data Engineer in title
+                if "data engineer" not in title.lower():
+                    continue
 
-            job_cards = soup.find_all("a", href=True)
+                # Check experience <= 2 years
+                if not self.is_valid_experience(description):
+                    continue
 
-            for link in job_cards[:20]:
-                text = link.get_text().lower()
-                if "data engineer" in text:
-                    self.jobs.append({
-                        "Job Title": link.get_text().strip(),
-                        "Company": "Naukri Listing",
-                        "Location": "India",
-                        "Salary": "Not specified",
-                        "Experience": "0-2 years",
-                        "Source": "Naukri",
-                        "Posted Date": datetime.now().strftime("%Y-%m-%d"),
-                        "Job URL": link["href"]
-                    })
+                self.jobs.append({
+                    "Job Title": title.strip(),
+                    "Company": "Check Indeed Posting",
+                    "Location": "India",
+                    "Experience": "≤ 2 years",
+                    "Source": "Indeed RSS",
+                    "Posted Date": pub_date,
+                    "Job URL": link
+                })
 
-            print(f"✅ Naukri jobs scraped: {len(self.jobs)}")
+            print(f"✅ Jobs collected: {len(self.jobs)}")
 
         except Exception as e:
-            print("⚠️ Naukri scraping failed")
-            print(traceback.format_exc())
+            print("⚠️ RSS fetch failed:", e)
 
-    # -------------------------
+    # ----------------------------------
+    # EXPERIENCE FILTER (<=2 YOE)
+    # ----------------------------------
+    def is_valid_experience(self, text):
+        text = text.lower()
+
+        if "fresher" in text or "entry level" in text:
+            return True
+
+        numbers = re.findall(r'\d+', text)
+
+        if numbers:
+            max_exp = max([int(n) for n in numbers])
+            return max_exp <= 2
+
+        # If no experience mentioned, allow
+        return True
+
+    # ----------------------------------
     # REMOVE DUPLICATES
-    # -------------------------
+    # ----------------------------------
     def remove_duplicates(self):
         if not self.jobs:
             return
@@ -77,66 +88,57 @@ class JobAlertAutomation:
         df.drop_duplicates(subset=["Job Title", "Job URL"], inplace=True)
         self.jobs = df.to_dict("records")
 
-    # -------------------------
+    # ----------------------------------
     # GENERATE EXCEL
-    # -------------------------
-    def generate_excel_report(self):
-        output_file = "job_alerts.xlsx"
+    # ----------------------------------
+    def generate_excel(self):
+        file_name = "job_alerts.xlsx"
 
         if not self.jobs:
-            print("⚠️ No jobs found. Creating empty report.")
-
             df = pd.DataFrame([{
-                "Message": "No Data Engineer jobs found today."
+                "Message": "No Data Engineer (≤2 YOE) jobs found today."
             }])
         else:
             df = pd.DataFrame(self.jobs)
 
-        df.to_excel(output_file, index=False)
+        df.to_excel(file_name, index=False)
+        return file_name
 
-        print("📊 Excel file created.")
-        return output_file
-
-    # -------------------------
+    # ----------------------------------
     # SEND EMAIL
-    # -------------------------
-    def send_email_alert(self, excel_file):
+    # ----------------------------------
+    def send_email(self, file_name):
         sender = os.getenv("SENDER_EMAIL")
         password = os.getenv("EMAIL_PASSWORD")
         recipient = os.getenv("RECIPIENT_EMAIL")
 
         if not sender or not password or not recipient:
-            print("❌ Missing email environment variables.")
+            print("❌ Email secrets missing.")
             return
 
         try:
-            print("📧 Sending email...")
-
             msg = MIMEMultipart()
             msg["From"] = sender
             msg["To"] = recipient
-            msg["Subject"] = f"Daily Data Engineer Jobs - {datetime.now().strftime('%d %B %Y')}"
+            msg["Subject"] = f"Daily Data Engineer Jobs (≤2 YOE) - {datetime.now().strftime('%d %B %Y')}"
 
             body = f"""
 Hello,
 
-This is your automated Data Engineer job report.
+Total Data Engineer jobs (≤2 YOE) found today: {len(self.jobs)}
 
-Total jobs found: {len(self.jobs)}
+Please check the attached Excel file.
 
-Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC
+Generated automatically via GitHub Actions.
 """
 
             msg.attach(MIMEText(body, "plain"))
 
-            with open(excel_file, "rb") as f:
+            with open(file_name, "rb") as f:
                 part = MIMEBase("application", "octet-stream")
                 part.set_payload(f.read())
                 encoders.encode_base64(part)
-                part.add_header(
-                    "Content-Disposition",
-                    f"attachment; filename={excel_file}",
-                )
+                part.add_header("Content-Disposition", f"attachment; filename={file_name}")
                 msg.attach(part)
 
             server = smtplib.SMTP("smtp.gmail.com", 587)
@@ -147,25 +149,22 @@ Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC
 
             print("✅ Email sent successfully.")
 
-        except smtplib.SMTPAuthenticationError:
-            print("❌ Gmail authentication failed.")
-            print("Make sure you used the 16-character app password WITHOUT spaces.")
-        except Exception:
-            print("❌ Email sending failed.")
-            print(traceback.format_exc())
+        except Exception as e:
+            print("❌ Email failed:", e)
 
-    # -------------------------
-    # MAIN RUN
-    # -------------------------
+    # ----------------------------------
+    # RUN
+    # ----------------------------------
     def run(self):
-        print("🚀 Job Alert Automation Started")
+        print("🚀 Job Automation Started")
 
-        self.scrape_naukri_jobs()
+        self.scrape_indeed_rss()
         self.remove_duplicates()
-        excel_file = self.generate_excel_report()
-        self.send_email_alert(excel_file)
 
-        print("✅ Automation Finished")
+        file_name = self.generate_excel()
+        self.send_email(file_name)
+
+        print("✅ Automation Completed")
 
 
 if __name__ == "__main__":
